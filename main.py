@@ -167,9 +167,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        if args.cpu == False:
-            input = input.cuda(async=True)
-            target = target.cuda(async=True)
+        if not args.cpu:
+            input = input.cuda()
+            target = target.cuda()
         if args.half:
             input = input.half()
 
@@ -216,9 +216,9 @@ def validate(val_loader, model, criterion):
 
     end = time.time()
     for i, (input, target) in enumerate(val_loader):
-        if args.cpu == False:
-            input = input.cuda(async=True)
-            target = target.cuda(async=True)
+        if not args.cpu:
+            input = input.cuda()
+            target = target.cuda()
 
         if args.half:
             input = input.half()

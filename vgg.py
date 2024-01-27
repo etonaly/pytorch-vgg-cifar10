@@ -2,9 +2,16 @@
 Modified from https://github.com/pytorch/vision.git
 '''
 import math
+import sys
 
 import torch.nn as nn
 import torch.nn.init as init
+
+module_path = '/PATH/HERE/'
+sys.path.append(module_path)
+print(sys.path)
+from MeanAdaptedConv import MeanAdaptedConv
+from MeanAdaptedLayer import MeanAdaptedLinear
 
 __all__ = [
     'VGG', 'vgg11', 'vgg11_bn', 'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn',
@@ -19,19 +26,44 @@ class VGG(nn.Module):
     def __init__(self, features):
         super(VGG, self).__init__()
         self.features = features
-        self.classifier = nn.Sequential(
-            nn.Dropout(),
-            nn.Linear(512, 512),
-            nn.ReLU(True),
-            nn.Dropout(),
-            nn.Linear(512, 512),
-            nn.ReLU(True),
-            nn.Linear(512, 10),
-        )
+        ma = False
+        for module in self.modules():
+            if isinstance(module, MeanAdaptedConv):
+                print("Found MeanAdaptedConv in self.modules")
+                ma = True
+                break
+
+        if ma:
+            self.classifier = nn.Sequential(
+                nn.Dropout(),
+                # nn.Linear(512, 512),
+                MeanAdaptedLinear(512, 512, gamma=0.99, bias=True, use_var=True, use_mean=True),
+                nn.ReLU(True),
+                nn.Dropout(),
+                # nn.Linear(512, 512),
+                MeanAdaptedLinear(512, 512, gamma=0.99, bias=True, use_var=True, use_mean=True),
+                nn.ReLU(True),
+                # nn.Linear(512, 10),
+                MeanAdaptedLinear(512, 10, gamma=0.99, bias=True, use_var=True, use_mean=True),
+            )
+        else:
+            self.classifier = nn.Sequential(
+                nn.Dropout(),
+                nn.Linear(512, 512),
+                nn.ReLU(True),
+                nn.Dropout(),
+                nn.Linear(512, 512),
+                nn.ReLU(True),
+                nn.Linear(512, 10),
+            )
          # Initialize weights
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                m.bias.data.zero_()
+            elif isinstance(m, MeanAdaptedConv):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_features
                 m.weight.data.normal_(0, math.sqrt(2. / n))
                 m.bias.data.zero_()
 
@@ -43,20 +75,36 @@ class VGG(nn.Module):
         return x
 
 
-def make_layers(cfg, batch_norm=False):
-    layers = []
-    in_channels = 3
-    for v in cfg:
-        if v == 'M':
-            layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
-        else:
-            conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
-            if batch_norm:
-                layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
+def make_layers(cfg, batch_norm=False, ma=False):
+    if not ma:
+        layers = []
+        in_channels = 3
+        for v in cfg:
+            if v == 'M':
+                layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
             else:
-                layers += [conv2d, nn.ReLU(inplace=True)]
-            in_channels = v
-    return nn.Sequential(*layers)
+                conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
+                if batch_norm:
+                    layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
+                else:
+                    layers += [conv2d, nn.ReLU(inplace=True)]
+                in_channels = v
+        return nn.Sequential(*layers)
+    else:
+        layers = []
+        in_channels = 3
+        for v in cfg:
+            if v == 'M':
+                layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
+            else:
+                #conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
+                conv2d = MeanAdaptedConv(in_channels, v, kernel_size=3, padding=1, gamma=0.99, bias=True, use_var=True, use_mean=True)
+                if batch_norm:
+                    layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
+                else:
+                    layers += [conv2d, nn.ReLU(inplace=True)]
+                in_channels = v
+        return nn.Sequential(*layers)
 
 
 cfg = {
@@ -71,6 +119,10 @@ cfg = {
 def vgg11():
     """VGG 11-layer model (configuration "A")"""
     return VGG(make_layers(cfg['A']))
+
+def vgg11ma():
+    """VGG 11-layer model mean adapted (configuration "A")"""
+    return VGG(make_layers(cfg['A'], ma=True))
 
 
 def vgg11_bn():
