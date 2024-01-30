@@ -132,7 +132,6 @@ def main():
 
     for epoch in range(args.start_epoch, args.epochs):
         adjust_learning_rate(optimizer, epoch)
-
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch)
 
@@ -160,19 +159,16 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     # switch to train mode
     model.train()
-
     end = time.time()
     for i, (input, target) in enumerate(train_loader):
 
         # measure data loading time
         data_time.update(time.time() - end)
-
         if not args.cpu:
             input = input.cuda()
             target = target.cuda()
         if args.half:
             input = input.half()
-
         # compute output
         output = model(input)
         loss = criterion(output, target)
